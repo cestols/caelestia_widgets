@@ -415,18 +415,11 @@ Singleton {
         return Config.options?.notifications?.timeoutNormal ?? 7000;
     }
 
-	NotificationServer {
+	QtObject {
         id: notifServer
-        // actionIconsSupported: true
-        actionsSupported: true
-        bodyHyperlinksSupported: true
-        bodyImagesSupported: true
-        bodyMarkupSupported: true
-        bodySupported: true
-        imageSupported: true
-        keepOnReload: false
-        persistenceSupported: true
-
+        // patched: caelestia owns org.freedesktop.Notifications; this stub never registers a server.
+        readonly property var trackedNotifications: ({ values: [] })
+        signal notification(var notification)
         onNotification: (notification) => {
             // Niri's screenshot-window IPC always emits a desktop notification, even
             // when iNiR only asked it for an internal preview cache frame. Match the

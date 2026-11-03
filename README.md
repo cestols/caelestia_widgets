@@ -10,7 +10,7 @@ The widget layer is vendored from [snowarch/iNiR](https://github.com/snowarch/iN
 
     qs -p /path/to/caelestia_widgets/shell.qml
 
-Autostart: `exec-once = qs -p /path/to/caelestia_widgets/shell.qml`
+Autostart and keybind live in `~/.config/hypr/hyprland/execs.lua` and `keybinds.lua`.
 
 ## What is ours, what is vendored
 
@@ -24,6 +24,7 @@ Autostart: `exec-once = qs -p /path/to/caelestia_widgets/shell.qml`
   never to the illogical-impulse paths.
 - `scripts/colors/*` that rewrite GTK/Qt/terminal/Spotify/Vesktop/browser themes are replaced by no-ops,
   and `IconThemeService._apply` returns early: this project must not touch system theming.
+- `services/Notifications.qml`: the `NotificationServer` is a stub, so we never claim `org.freedesktop.Notifications`.
 - `Background.qml`: guard on `HyprlandData.windowList` being undefined at startup.
 
 ## Enabling widgets
@@ -31,7 +32,12 @@ Autostart: `exec-once = qs -p /path/to/caelestia_widgets/shell.qml`
 Edit `background.widgets.<name>.enable` and `x`/`y` in `~/.config/caelestia-widgets/config.json`
 (hot-reloaded). All widgets are disabled by default.
 
+## Edit mode
+
+`SUPER + SHIFT + E` (or `qs -p shell.qml ipc call background toggleEditMode`) toggles inir's edit mode:
+snap grid, resize handles, and the bottom toolbar (Add widgets, Grid size, Done). Click a widget to get its
+options menu (Widget / Look / Arrange tabs).
+
 ## Known gaps
 
-- inir's Notifications service tries to register the notification server (it fails while caelestia owns it).
 - Only checked on Hyprland with two monitors; edit mode and drag were not exercised.
