@@ -19,10 +19,14 @@ ShellRoot {
             // Add one Region per widget below: only widgets take clicks, the rest falls through.
             mask: Region {
                 Region { item: clock }
+                Region { item: media }
+                Region { item: sysmon }
             }
 
             DotGrid {}
             Clock { id: clock; screenName: modelData.name }
+            MediaControls { id: media; screenName: modelData.name; defCol: 2 }
+            SystemMonitor { id: sysmon; screenName: modelData.name; defRow: 1 }
         }
     }
 }
