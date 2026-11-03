@@ -1,0 +1,3 @@
+singleton Theme Theme.qml
+singleton Board Board.qml
+DotGrid DotGrid.qml
