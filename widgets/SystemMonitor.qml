@@ -76,10 +76,10 @@ Widget {
                 spacing: 4
                 Item {
                     width: parent.width; height: label.height
-                    Text { id: label; text: modelData.name; color: Theme.onSurface; font { pixelSize: 14; weight: Font.Medium } }
+                    Text { id: label; text: modelData.name; color: Theme.fg; font { pixelSize: 14; weight: Font.Medium } }
                     Text {
                         anchors.right: parent.right
-                        text: modelData.sub; color: Theme.onSurfaceVariant; font.pixelSize: 12
+                        text: modelData.sub; color: Theme.fgMuted; font.pixelSize: 12
                     }
                 }
                 Rectangle {

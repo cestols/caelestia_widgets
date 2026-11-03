@@ -12,7 +12,7 @@ ShellRoot {
             screen: modelData
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
+            exclusionMode: ExclusionMode.Normal   // stay inside caelestia's bar and border
             WlrLayershell.layer: WlrLayer.Bottom
             WlrLayershell.namespace: "caelestia-widgets"
 

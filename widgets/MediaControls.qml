@@ -24,13 +24,13 @@ Widget {
         visible: !root.player
         anchors.centerIn: parent
         text: "Nothing playing"
-        color: Theme.onSurfaceVariant
-        font.pixelSize: 14
+        color: Theme.fgMuted
+        font.pixelSize: 12
     }
 
     Row {
         visible: !!root.player
-        anchors { fill: parent; margins: 12 }
+        anchors { fill: parent; margins: 10 }
         spacing: 12
 
         Rectangle {
@@ -49,19 +49,19 @@ Widget {
         Column {
             width: parent.width - parent.height - parent.spacing
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
+            spacing: 3
 
             Text {
                 width: parent.width
                 text: root.player?.trackTitle || "Unknown"
-                color: Theme.onSurface
+                color: Theme.fg
                 elide: Text.ElideRight
                 font { pixelSize: 15; weight: Font.Medium }
             }
             Text {
                 width: parent.width
                 text: root.player?.trackArtist ?? ""
-                color: Theme.onSurfaceVariant
+                color: Theme.fgMuted
                 elide: Text.ElideRight
                 font.pixelSize: 12
             }
@@ -89,13 +89,13 @@ Widget {
                     delegate: Rectangle {
                         required property var modelData
                         required property int index
-                        width: 28; height: 28; radius: 14
+                        width: 24; height: 24; radius: 12
                         color: modelData.main ? Theme.primary : "transparent"
                         Text {
                             anchors.centerIn: parent
                             text: modelData.t
-                            color: modelData.main ? Theme.onPrimary : Theme.onSurface
-                            font.pixelSize: 14
+                            color: modelData.main ? Theme.fgOnPrimary : Theme.fg
+                            font.pixelSize: 12
                         }
                         // Own MouseArea above the Widget's drag area.
                         MouseArea {

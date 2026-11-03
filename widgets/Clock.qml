@@ -18,7 +18,7 @@ Widget {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDate(clock.date, "dddd d MMMM")
-            color: Theme.onSurfaceVariant
+            color: Theme.fgMuted
             font.pixelSize: 14
         }
     }
