@@ -30,9 +30,31 @@ Singleton {
     // Keep one automatic source of truth here; the old debounced _autoActive
     // cache could remain true after Niri had already reported fullscreen exit.
     readonly property bool _reactiveAutoActive: autoDetect && hasVisibleFullscreenWindow
-    readonly property bool active: _manualActive || _reactiveAutoActive
+    readonly property bool active: _manualActive || _reactiveAutoActive || _caelestiaActive
     readonly property bool autoDetect: Config.options?.gameMode?.autoDetect ?? true
-    property bool manuallyActivated: _manualActive
+    property bool manuallyActivated: _manualActive || _caelestiaActive
+
+    // patched: caelestia's game mode turns Hyprland animations off and emits nothing we can listen to, so ask Hyprland.
+    property bool _caelestiaActive: false
+    Timer {
+        interval: 2000
+        repeat: true
+        running: CompositorService.isHyprland
+        triggeredOnStart: true
+        onTriggered: caelestiaProbe.running = true
+    }
+    Process {
+        id: caelestiaProbe
+        command: ["/usr/bin/hyprctl", "getoption", "animations:enabled", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const option = JSON.parse(text)
+                    root._caelestiaActive = !(option.bool ?? option.int ?? true)
+                } catch (e) {} // a failed read keeps the last state
+            }
+        }
+    }
     readonly property bool autoActivated: !_manualActive && _reactiveAutoActive
 
     // Surface mapping caused native crash loops; GameMode only suppresses work.

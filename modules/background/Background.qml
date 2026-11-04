@@ -571,7 +571,8 @@ Scope {
             return DesktopWidgetLayout.value(bgRoot.screenName, widgetKey, key, fallback);
         }
         function _widgetEnabled(widgetKey: string, fallback: bool): bool {
-            return DesktopWidgetLayout.enabled(bgRoot.screenName, widgetKey, fallback);
+            // patched: game mode unloads the widgets, so cava and every other animation stop too
+            return !GameMode.active && DesktopWidgetLayout.enabled(bgRoot.screenName, widgetKey, fallback);
         }
 
         property int _imageRouteRevision: 0
@@ -3337,7 +3338,7 @@ Scope {
                         active: false
 
                         function _configEnabled(): bool {
-                            return DesktopWidgetLayout.enabled(bgRoot.screenName,
+                            return bgRoot._widgetEnabled(
                                 "mascotInstances." + modelData,
                                 Config.getNestedValue("background.widgets.mascotInstances." + modelData + ".enable", false));
                         }
@@ -3373,6 +3374,10 @@ Scope {
                             function onConfigChanged() { Qt.callLater(mascotInstanceLoader._syncLoaded) }
                         }
                         Connections {
+                            target: GameMode
+                            function onActiveChanged() { mascotInstanceLoader._syncLoaded() }
+                        }
+                        Connections {
                             target: bgRoot // patched: the window, not the screen, is what these sizes follow
                             function onWidthChanged() {
                                 if (!mascotInstanceLoader.item) return;
@@ -3403,7 +3408,7 @@ Scope {
                         active: false
 
                         function _configEnabled(): bool {
-                            return DesktopWidgetLayout.enabled(bgRoot.screenName,
+                            return bgRoot._widgetEnabled(
                                 "custom." + modelData.id,
                                 Config.getNestedValue("background.widgets.custom." + modelData.id + ".enable", false));
                         }
@@ -3451,6 +3456,10 @@ Scope {
                             function onConfigChanged() {
                                 Qt.callLater(customWidgetLoader._syncLoaded);
                             }
+                        }
+                        Connections {
+                            target: GameMode
+                            function onActiveChanged() { customWidgetLoader._syncLoaded() }
                         }
 
                         Connections {

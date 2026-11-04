@@ -25,6 +25,15 @@ Item {
     }
     property string visualizerType: "wave" // wave | bars | organic
     property real normalizationCeiling: CavaService.normalizationCeiling
+    // patched: the ceiling falls on every cava frame, so a held frame must hold it too or it keeps repainting.
+    property real _shownCeiling: 100
+    Binding {
+        target: root
+        property: "_shownCeiling"
+        value: root.normalizationCeiling
+        when: root.animate
+        restoreMode: Binding.RestoreNone
+    }
     property var spectrumColors: CavaTheme.visualizerColors
     property color spectrumColor: CavaTheme.primaryColor
     property real spectrumOpacity: 0.45
@@ -118,7 +127,7 @@ Item {
             active: root.effectiveActive && edgeField.visible && edgeField.drawing
             animate: root.animate && edgeField.drawing
             points: root.organicPoints
-            normalizationCeiling: root.normalizationCeiling
+            normalizationCeiling: root._shownCeiling
             primaryColor: root.spectrumColors?.length > 0
                 ? root.spectrumColors[0] : root.spectrumColor
             secondaryColor: root.spectrumColors?.length > 1
@@ -193,7 +202,7 @@ Item {
                 active: root.effectiveActive && root.visualizerType !== "organic" && drawn.drawing
                 threadedRendering: root.threadedRendering
                 visualizerType: root.visualizerType
-                normalizationCeiling: root.normalizationCeiling
+                normalizationCeiling: root._shownCeiling
                 spectrumColors: root.spectrumColors
                 spectrumColor: root.spectrumColor
                 spectrumOpacity: root.spectrumOpacity
@@ -268,7 +277,7 @@ Item {
                         }
                     }
                 }
-                normalizationCeiling: root.normalizationCeiling
+                normalizationCeiling: root._shownCeiling
                 primaryColor: root.spectrumColors?.length > 0
                     ? root.spectrumColors[0] : root.spectrumColor
                 secondaryColor: root.spectrumColors?.length > 1
