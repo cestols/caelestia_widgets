@@ -87,6 +87,8 @@ ColumnLayout {
         enableSettingsSearch: false
         configuration: StyledSlider.Configuration.XS
         stopIndicatorValues: []
+        // patched: StyledSlider assumes a 0-1 value, which showed 130 as 13000%
+        tooltipContent: typeof root.format === "function" ? root.format(value) : Math.round(value) + root.unit
         from: root.from
         to: root.to
         stepSize: root.stepSize

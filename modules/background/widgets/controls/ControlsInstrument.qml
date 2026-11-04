@@ -38,7 +38,7 @@ Item {
               available: true, toggle: () => Hyprsunset.toggle() }
         ]
         if (root.size === "large") list.push(
-            { glyph: "coffee", label: Translation.tr("Keep awake"), detail: "", on: Idle.inhibit, available: true, toggle: () => Idle.toggleInhibit() },
+            { glyph: "coffee", label: Translation.tr("Keep awake"), detail: "", on: Idle.inhibit, available: false /* patched: idle belongs to caelestia */, toggle: () => Idle.toggleInhibit() },
             { glyph: "sports_esports", label: Translation.tr("Game mode"), detail: "", on: GameMode.active, available: true, toggle: () => GameMode.toggle() },
             { glyph: "mic", label: Translation.tr("Microphone"), detail: "", on: Audio.source !== null && !Audio.micMuted,
               available: Audio.source !== null, toggle: () => Audio.toggleMicMute() },

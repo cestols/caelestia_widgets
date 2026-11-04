@@ -63,6 +63,7 @@ Singleton {
     }
 
     function _startSwayidle() {
+        return // patched: caelestia owns idle, locking and sleep; this layer must not run a second daemon
         if (inhibit) return
 
         const cmd = ["/usr/bin/swayidle", "-w"]

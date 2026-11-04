@@ -13,7 +13,7 @@ Singleton {
     // Discovered custom widgets: [{ id, name, icon, qmlPath, dirPath, ... }]
     property list<var> widgets: []
     readonly property bool ready: _scanDone
-    readonly property string widgetsDir: `${Directories.configPath}/inir/widgets`
+    readonly property string widgetsDir: `${Directories.shellConfig}/widgets` // patched
 
     property bool _scanDone: false
 
@@ -201,7 +201,8 @@ Singleton {
 
     // Delete a widget by removing its directory
     function remove(widgetId: string): void {
-        if (!widgetId || widgetId.length === 0) return;
+        // patched: the id becomes part of an rm -rf path
+        if (!/^[A-Za-z0-9_][A-Za-z0-9._-]*$/.test(widgetId ?? "")) return;
         _removeProcess.widgetId = widgetId;
         _removeProcess.running = true;
     }

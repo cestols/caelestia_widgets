@@ -121,8 +121,9 @@ Item {
             ? Number(root.itemData?.x ?? 0) / currentWidth : 0
         const relativeY = currentHeight > 0
             ? Number(root.itemData?.y ?? 0) / currentHeight : 0
-        const targetWork = ShellLayoutController.desktopZoneWorkArea(
-            name, screen.width ?? 0, screen.height ?? 0)
+        // patched: items live in the target's window, which is smaller than its screen
+        const targetHost = ShellLayoutController.desktopHostRect(name, screen.width ?? 0, screen.height ?? 0)
+        const targetWork = ShellLayoutController.desktopZoneWorkArea(name, targetHost.width, targetHost.height)
         const targetWidth = Math.max(0, Number(targetWork.width ?? 0) - root.width)
         const targetHeight = Math.max(0, Number(targetWork.height ?? 0) - root.height)
         const arranged = DesktopItems.arrangePosition(name,

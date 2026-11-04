@@ -99,7 +99,7 @@ AbstractBackgroundWidget {
     }
 
     function lockScreen(): void {
-        Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "lock", "activate"]);
+        Quickshell.execDetached(["qs", "-c", "caelestia", "ipc", "call", "lock", "lock"] /* patched: caelestia owns the lock */);
     }
 
     editPopoverContent: Component {
@@ -350,6 +350,7 @@ AbstractBackgroundWidget {
             }
 
             RippleButton {
+                visible: false // patched: opens a settings window this shell does not have
                 implicitWidth: Math.round(38 * root.scaleFactor)
                 implicitHeight: Math.round(38 * root.scaleFactor)
                 buttonRadius: height / 2

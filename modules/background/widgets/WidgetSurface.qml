@@ -280,10 +280,13 @@ Rectangle {
 
     Image {
         id: blurredWallpaper
-        x: -root.screenX
-        y: -root.screenY
-        width: root.screenWidth
-        height: root.screenHeight
+        // patched: in the desktop window (smaller than its output) this must still cover the whole output
+        readonly property var host: root.QsWindow?.window ?? null
+        readonly property bool inset: host?.outputOrigin !== undefined
+        x: -root.screenX - (inset ? host.outputOrigin.x : 0)
+        y: -root.screenY - (inset ? host.outputOrigin.y : 0)
+        width: inset ? host.screen.width : root.screenWidth
+        height: inset ? host.screen.height : root.screenHeight
         // Don't load/blur when the compositor is already blurring underneath.
         // Each WidgetSurface keeps its own FBO when layer.enabled is true; with
         // many widgets enabled this multiplies fast. See #159.
@@ -292,8 +295,8 @@ Rectangle {
         fillMode: Image.PreserveAspectCrop
         cache: true
         asynchronous: true
-        sourceSize.width: Math.round(root.screenWidth * root._blurScale)
-        sourceSize.height: Math.round(root.screenHeight * root._blurScale)
+        sourceSize.width: Math.round(width * root._blurScale)
+        sourceSize.height: Math.round(height * root._blurScale)
 
         // OPTIMIZATION: Release FBO when widget is not visible or power is off
         layer.enabled: root._glass && root.visible && root.powerActive

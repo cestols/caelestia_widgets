@@ -87,7 +87,7 @@ Singleton {
     }
 
     function lock() {
-        Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "lock", "activate"]);
+        Quickshell.execDetached(["qs", "-c", "caelestia", "ipc", "call", "lock", "lock"] /* patched: caelestia owns the lock */);
     }
 
     function suspend() {

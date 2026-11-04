@@ -1311,6 +1311,8 @@ Singleton {
 
             property JsonObject background: JsonObject {
                 property JsonObject widgets: JsonObject {
+                    // patched: px kept clear at each edge, for the input caelestia's drawers claim on an empty desktop
+                    property int edgeInset: 80
                     // "panel" (stock per-style plate) | "island" (Ricelin card)
                     property string style: "panel"
                     property string design: "individual" // individual, instrument, readout

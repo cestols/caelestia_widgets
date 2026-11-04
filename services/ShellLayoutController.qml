@@ -224,6 +224,17 @@ Singleton {
     // Physical desktop space occupied by persistent shell surfaces. Free
     // desktop placement can overlap it deliberately; automatic zone placement
     // and shell-layout diagnostics use it to keep snapped widgets visible.
+    // patched: the rectangle of the widget window on its output, reserved space (caelestia's bar and border) removed.
+    function desktopHostRect(outputName, screenWidth, screenHeight): var {
+        const monitor = (HyprlandData.monitors ?? []).find(item => item.name === outputName)
+        const reserved = monitor?.reserved ?? [0, 0, 0, 0]
+        return {
+            x: reserved[0], y: reserved[1],
+            width: Math.max(0, Number(screenWidth) - reserved[0] - reserved[2]),
+            height: Math.max(0, Number(screenHeight) - reserved[1] - reserved[3])
+        }
+    }
+
     function desktopInsets(outputName: string): var {
         const result = {
             left: 0,
@@ -233,6 +244,15 @@ Singleton {
             barEdge: "",
             dockEdge: ""
         }
+        // patched: caelestia owns the bar and border (the window already sits inside them).
+        // On an empty desktop its drawers also claim `dragMaskPadding` px of input at every edge,
+        // so widgets and the grid stay out of that band. Tune with background.widgets.edgeInset.
+        const edge = Number(Config.options?.background?.widgets?.edgeInset ?? 80)
+        result.left = edge
+        result.top = edge
+        result.right = edge
+        result.bottom = edge
+        return result
         if (root.activeFamily === "iris")
             return root._irisDesktopInsets(outputName, result)
         if (root.activeFamily !== "ii")
@@ -345,15 +365,9 @@ Singleton {
 
     function desktopWorkArea(outputName: string, screenWidth: real,
             screenHeight: real): var {
-        const panelInsets = root.desktopInsets(outputName)
-        return root._workAreaFromInsets({
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-            barEdge: panelInsets.barEdge ?? "",
-            dockEdge: panelInsets.dockEdge ?? ""
-        }, screenWidth, screenHeight)
+        // patched: free placement uses the same inset area as zones, so nothing leaves the grid
+        return root._workAreaFromInsets(root.desktopInsets(outputName),
+            screenWidth, screenHeight)
     }
 
     // Zone placement is intentionally panel-aware while free placement spans

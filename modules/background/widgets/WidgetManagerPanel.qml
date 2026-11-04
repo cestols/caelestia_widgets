@@ -394,6 +394,7 @@ Item {
                 }
 
                 WidgetEditAction {
+                    visible: false // patched: opens a settings window this shell does not have
                     iconName: "settings"
                     compact: true
                     tooltip: Translation.tr("Open full widget settings")
@@ -852,7 +853,7 @@ Item {
                     }
                     StyledText {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "~/.config/inir/widgets/"
+                        text: "~/.config/caelestia-widgets/widgets/"
                         color: ColorUtils.applyAlpha(root.ink, 0.48)
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         font.family: Appearance.font.family.monospace

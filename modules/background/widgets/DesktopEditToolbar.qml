@@ -493,6 +493,7 @@ Item {
 
                 WidgetEditAction {
                     compact: true
+                    visible: false // patched: opens a settings window this shell does not have
                     iconName: "border_outer"
                     label: Translation.tr("Screen edges")
                     tooltip: Translation.tr("Organic edge settings")
@@ -502,6 +503,7 @@ Item {
 
                 WidgetEditAction {
                     compact: true
+                    visible: false // patched: opens a settings window this shell does not have
                     iconName: "settings"
                     label: Translation.tr("Widget settings")
                     tooltip: Translation.tr("Every widget option in Settings")

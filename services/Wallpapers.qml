@@ -224,7 +224,18 @@ Singleton {
                 if (data && data.path) return data.path
             }
         }
-        return Config.options?.background?.wallpaperPath ?? ""
+        return (Config.options?.background?.wallpaperPath ?? "") || root.caelestiaWallpaperPath
+    }
+
+    // patched: caelestia owns the wallpaper. Glass and colour adaptation read its path; this shell never draws it,
+    // because Background.qml takes the image to draw from background.wallpaperPath alone.
+    property string caelestiaWallpaperPath: ""
+    FileView {
+        path: Quickshell.env("HOME") + "/.local/state/caelestia/wallpaper/path.txt"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.caelestiaWallpaperPath = text().trim()
     }
 
     readonly property bool useBackdropForColors: Config.options?.appearance?.wallpaperTheming?.useBackdropForColors ?? false
@@ -652,7 +663,7 @@ Singleton {
             if (data && data.path)
                 return data.path
         }
-        return Config.options?.background?.wallpaperPath ?? ""
+        return (Config.options?.background?.wallpaperPath ?? "") || root.caelestiaWallpaperPath
     }
 
     function currentWaffleWallpaperPath(monitorName = ""): string {

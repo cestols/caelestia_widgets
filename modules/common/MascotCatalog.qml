@@ -69,8 +69,7 @@ Singleton {
 
     FileView {
         id: packStateProbe
-        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state"))
-            + "/inir/mascot-pack-state.json"
+        path: Directories.statePath + "/caelestia-widgets/mascot-pack-state.json" // patched: not an inir install's state
         watchChanges: true
         printErrors: false
         onLoaded: root._refreshPackState()

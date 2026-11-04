@@ -74,6 +74,8 @@ Item {
     function eligible(): real {
         if (!root.live || !root.allowed || !root.hostCalm || root.content === null || root.width <= 0 || root.height <= 0)
             return -1
+        if (root.host?.liveCovered?.(root, root.sceneRect())) // patched: never paint over a widget stacked above
+            return -1
         const opacity = root.composition()
         return opacity <= 0.001 ? -1 : opacity
     }
@@ -150,7 +152,8 @@ Item {
             }
             screen: root.screen
             color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
+            // patched: placedRect is host-window-local, so margins must start from the same origin as the host's
+            exclusionMode: root.host?.exclusionMode ?? ExclusionMode.Ignore
             exclusiveZone: 0
             mask: Region {}
             WlrLayershell.namespace: "quickshell:inir-live"

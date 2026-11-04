@@ -32,6 +32,7 @@ AbstractWidget {
     function _setOutputValues(values): void {
         if (!values || typeof values !== "object")
             return
+        values = root.sanitizeValues(values)
         // A style picked on one widget while a design covers it makes that widget an exception.
         if (root.widgetSharedDesign !== "individual"
                 && (values.style !== undefined || values.displayMode !== undefined))
@@ -44,6 +45,68 @@ AbstractWidget {
         for (const key of Object.keys(values))
             updates[root._configPath + "." + key] = values[key]
         Config.setNestedValues(updates)
+    }
+
+    // patched: keep every committed size, scale and position inside the work area, whichever control
+    // wrote it (edge drag, scale slider, Arrange menu). Sizes are predicted from the current rendered
+    // size and the relative change of the scale/width/height values in this write.
+    function sanitizeValues(values): var {
+        const out = Object.assign({}, values)
+        const strategy = out.placementStrategy ?? root.placementStrategy
+        const zonePlaced = root._snapZones.indexOf(strategy) >= 0
+        const pad = zonePlaced ? 2 * root._zoneMargin : 0 // zones keep a margin on each side
+        const areaW = root._safeWidth - pad, areaH = root._safeHeight - pad
+        if (areaW <= 0 || areaH <= 0 || root.width <= 0 || root.height <= 0)
+            return out
+        const axes = root.resizableAxes ?? ({})
+        const curScale = root.scaleFactor
+        const hasScale = out.widgetScale !== undefined
+        const newScale = hasScale ? Math.max(0.5, Math.min(2, (Number(out.widgetScale) || 100) / 100)) : curScale
+        const rel = (key) => {
+            if (!key || out[key] === undefined) return 1
+            const cur = Number(root._readConfigKey(key)), next = Number(out[key])
+            return cur > 0 && next > 0 ? next / cur : 1
+        }
+        const uni = axes.uniform && axes.uniform !== "widgetScale" ? axes.uniform : ""
+        let gw = (newScale / curScale) * rel(axes.width) * rel(uni)
+        let gh = (newScale / curScale) * rel(axes.height) * rel(uni)
+        const predW = root.width * gw, predH = root.height * gh
+        // Only a write that sets a size may shrink: Lock, a font or a colour must not resize the widget.
+        const sizing = hasScale || [axes.width, axes.height, axes.uniform].some(key => key && out[key] !== undefined)
+        if (sizing && (predW > areaW + 0.5 || predH > areaH + 0.5)) {
+            const f = Math.min(areaW / predW, areaH / predH)
+            const uniBase = Number(out[uni] ?? root._readConfigKey(uni))
+            if (uni && uniBase > 0) {
+                out[uni] = Math.max(1, Math.floor(uniBase * f))
+                gw = (newScale / curScale) * rel(axes.width) * rel(uni)
+                gh = (newScale / curScale) * rel(axes.height) * rel(uni)
+            } else if (hasScale || !(axes.width || axes.height)) {
+                out.widgetScale = Math.max(50, Math.floor(newScale * f * 100))
+                gw = (out.widgetScale / 100 / curScale) * rel(axes.width)
+                gh = (out.widgetScale / 100 / curScale) * rel(axes.height)
+            }
+            // still too large (scale already at its minimum, or no scale in this write): shrink the size values
+            const fitAxis = (key, current, area) => {
+                const pred = current
+                if (!key || pred <= area + 0.5) return 1
+                const base = Number(out[key] ?? root._readConfigKey(key))
+                if (!(base > 0)) return 1
+                out[key] = Math.floor(base * (area / pred))
+                return area / pred
+            }
+            gw *= fitAxis(axes.width, root.width * gw, areaW)
+            gh *= fitAxis(axes.height, root.height * gh, areaH)
+        }
+        const w = Math.min(root.width * gw, areaW), h = Math.min(root.height * gh, areaH)
+        const moving = out.x !== undefined || out.y !== undefined
+        const resizing = Math.abs(gw - 1) > 0.001 || Math.abs(gh - 1) > 0.001
+        if ((moving || resizing) && !zonePlaced) {
+            const nx = Math.max(root._safeLeft, Math.min(Number(out.x ?? root.x), root._safeRight - w))
+            const ny = Math.max(root._safeTop, Math.min(Number(out.y ?? root.y), root._safeBottom - h))
+            if (out.x !== undefined || Math.round(nx) !== Math.round(root.x)) out.x = Math.round(nx)
+            if (out.y !== undefined || Math.round(ny) !== Math.round(root.y)) out.y = Math.round(ny)
+        }
+        return out
     }
 
     function _setOutputValue(key: string, value): void {
@@ -218,6 +281,14 @@ AbstractWidget {
     readonly property real _zoneSafeRight: root._zoneWorkArea.right ?? root._safeRight
     readonly property real _zoneSafeBottom: root._zoneWorkArea.bottom ?? root._safeBottom
     readonly property int _zoneMargin: 16
+    // patched: a resize drag stops where the commit would: zones keep their margin on each side.
+    readonly property int _dragInset: root._isZonePlacement ? root._zoneMargin : 0
+    readonly property real _dragLeft: root._safeLeft + root._dragInset
+    readonly property real _dragTop: root._safeTop + root._dragInset
+    readonly property real _dragRight: root._safeRight - root._dragInset
+    readonly property real _dragBottom: root._safeBottom - root._dragInset
+    readonly property real _dragWidth: root._safeWidth - 2 * root._dragInset
+    readonly property real _dragHeight: root._safeHeight - 2 * root._dragInset
     readonly property int _analysisPadding: 48
 
     function _getZonePosition(zone: string): point {
@@ -739,9 +810,13 @@ AbstractWidget {
         if (root._editPlacementSide.length === 0)
             root._editPlacementSide = root._editControlsGeometry.naturalSide
     }
-    readonly property var _editControlsGeometry: root._resolveEditControlsGeometry(
-        root.x, root.y, editPopoverPanel.open, root._editPlacementSide, root._popoverReserve,
-        root._popoverReserveWidth)
+    // patched: the controls hold still while a slider previews a new size, or the slider slides under the pointer
+    property var _heldEditGeometry: null
+    readonly property var _editControlsGeometry: root._irisPreviewing && root._heldEditGeometry !== null
+        ? root._heldEditGeometry
+        : root._resolveEditControlsGeometry(
+            root.x, root.y, editPopoverPanel.open, root._editPlacementSide, root._popoverReserve,
+            root._popoverReserveWidth)
     readonly property bool _editControlsBelow: root._editControlsGeometry.below
 
     function containsEditPoint(point: point): bool {
@@ -1444,8 +1519,8 @@ AbstractWidget {
                     if (root._snapEnabled)
                         rightEdge = root._snapEditEdge(rightEdge,
                             root._zoneSafeLeft, root._zoneSafeRight)
-                    newW = Math.max(root.resizeMinWidth, Math.min(root.resizeMaxWidth,
-                        rightEdge - rh._startX))
+                    newW = Math.max(root.resizeMinWidth, Math.min(root.resizeMaxWidth, root._dragWidth,
+                        Math.min(rightEdge, root._dragRight) - rh._startX))
                 }
                 if (rh.resizeLeft) {
                     const fixedRight = rh._startX + rh._startWidth
@@ -1453,8 +1528,8 @@ AbstractWidget {
                     if (root._snapEnabled)
                         leftEdge = root._snapEditEdge(leftEdge,
                             root._zoneSafeLeft, root._zoneSafeRight)
-                    const dw = Math.max(root.resizeMinWidth, Math.min(root.resizeMaxWidth,
-                        fixedRight - leftEdge))
+                    const dw = Math.max(root.resizeMinWidth, Math.min(root.resizeMaxWidth, root._dragWidth,
+                        fixedRight - Math.max(leftEdge, root._dragLeft)))
                     newX = fixedRight - dw
                     newW = dw
                 }
@@ -1463,8 +1538,8 @@ AbstractWidget {
                     if (root._snapEnabled)
                         bottomEdge = root._snapEditEdge(bottomEdge,
                             root._zoneSafeTop, root._zoneSafeBottom)
-                    newH = Math.max(root.resizeMinHeight, Math.min(root.resizeMaxHeight,
-                        bottomEdge - rh._startY))
+                    newH = Math.max(root.resizeMinHeight, Math.min(root.resizeMaxHeight, root._dragHeight,
+                        Math.min(bottomEdge, root._dragBottom) - rh._startY))
                 }
                 if (rh.resizeTop) {
                     const fixedBottom = rh._startY + rh._startHeight
@@ -1472,8 +1547,8 @@ AbstractWidget {
                     if (root._snapEnabled)
                         topEdge = root._snapEditEdge(topEdge,
                             root._zoneSafeTop, root._zoneSafeBottom)
-                    const dh = Math.max(root.resizeMinHeight, Math.min(root.resizeMaxHeight,
-                        fixedBottom - topEdge))
+                    const dh = Math.max(root.resizeMinHeight, Math.min(root.resizeMaxHeight, root._dragHeight,
+                        fixedBottom - Math.max(topEdge, root._dragTop)))
                     newY = fixedBottom - dh
                     newH = dh
                 }
@@ -2045,7 +2120,8 @@ AbstractWidget {
         void Lume.revision
         if (!root._regionSampling || root._lumaPath.length === 0)
             return null
-        return Lume.read(root._wallpaperOutput, root.x, root.y, root.width, root.height)
+        const origin = root.QsWindow.window?.outputOrigin ?? Qt.point(0, 0) // patched: Lume wants output coordinates
+        return Lume.read(root._wallpaperOutput, root.x + origin.x, root.y + origin.y, root.width, root.height)
     }
     on_BackdropSampleChanged: root._applyBackdropSample()
 
@@ -2283,6 +2359,11 @@ AbstractWidget {
     function previewIrisValue(key: string, value: var): void {
         const preview = ({})
         preview[key] = value
+        // patched: the live preview obeys the same limits as the commit
+        const allowed = root.sanitizeValues(preview)
+        preview[key] = allowed[key] ?? value
+        if (!root._irisPreviewing)
+            root._heldEditGeometry = root._editControlsGeometry
         root._resizePreviewValues = preview
         root._irisPreviewing = true
     }
@@ -2296,6 +2377,7 @@ AbstractWidget {
         onTriggered: {
             root._resizePreviewValues = ({})
             root._irisPreviewing = false
+            root._heldEditGeometry = null
         }
     }
     function commitIrisScale(percent: int): void {
@@ -2591,6 +2673,17 @@ AbstractWidget {
         onTriggered: {
             if (!Config.ready || root.containsPress || root._isResizing || root._irisSizing)
                 return;
+            // patched: a widget larger than the work area (saved earlier, or after the area shrank) is scaled down
+            const zonePad = root._isZonePlacement ? 2 * root._zoneMargin : 0
+            if (!root.locked && root._safeWidth > 0 && root._safeHeight > 0
+                    && (root.width > root._safeWidth - zonePad + 1 || root.height > root._safeHeight - zonePad + 1))
+            {
+                const uniformKey = root.resizableAxes?.uniform
+                const key = uniformKey && uniformKey !== "widgetScale" ? uniformKey : "widgetScale"
+                const current = Number(root._readConfigKey(key) ?? (key === "widgetScale" ? 100 : 0))
+                if (current > 0)
+                    root._setOutputValue(key, Math.round(current))
+            }
             if (root._isZonePlacement)
                 root.snapToZone(root.placementStrategy);
             else if (root._isAutoPlacement)

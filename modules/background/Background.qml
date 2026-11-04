@@ -154,19 +154,19 @@ Scope {
                 quickControls: GlobalStates.desktopWidgetQuickControls,
                 layerOrder: Config.getNestedValue("background.widgets.layerOrder", []) ?? [],
                 outputOverrides: Config.options?.background?.widgets?.outputOverrides ?? [],
-                outputs: Quickshell.screens.map(screen => ({
-                    name: screen?.name ?? "",
-                    width: screen?.width ?? 0,
-                    height: screen?.height ?? 0,
-                    widgetsAllowed: DesktopWidgetLayout.outputAllowed(screen?.name ?? ""),
-                    insets: ShellLayoutController.desktopInsets(screen?.name ?? ""),
-                    workArea: ShellLayoutController.desktopWorkArea(
-                        screen?.name ?? "", screen?.width ?? 0,
-                        screen?.height ?? 0),
-                    zoneWorkArea: ShellLayoutController.desktopZoneWorkArea(
-                        screen?.name ?? "", screen?.width ?? 0,
-                        screen?.height ?? 0)
-                }))
+                outputs: Quickshell.screens.map(screen => {
+                    // patched: report the areas widgets really use, which are relative to the window
+                    const host = ShellLayoutController.desktopHostRect(screen?.name ?? "", screen?.width ?? 0, screen?.height ?? 0)
+                    return {
+                        name: screen?.name ?? "",
+                        width: screen?.width ?? 0,
+                        height: screen?.height ?? 0,
+                        widgetsAllowed: DesktopWidgetLayout.outputAllowed(screen?.name ?? ""),
+                        insets: ShellLayoutController.desktopInsets(screen?.name ?? ""),
+                        workArea: ShellLayoutController.desktopWorkArea(screen?.name ?? "", host.width, host.height),
+                        zoneWorkArea: ShellLayoutController.desktopZoneWorkArea(screen?.name ?? "", host.width, host.height)
+                    }
+                })
             })
         }
 
@@ -564,9 +564,9 @@ Scope {
         readonly property var workSafetyTriggerOptions: workSafetyOptions.triggerCondition ?? {}
         readonly property var lockBlurOptions: Config.options?.panelFamily === "iris" ? ({}) : (Config.options?.lock?.blur ?? {})
         readonly property var desktopFreeWorkArea: ShellLayoutController.desktopWorkArea(
-            screen?.name ?? "", screen?.width ?? 0, screen?.height ?? 0)
+            screen?.name ?? "", bgRoot.width, bgRoot.height)
         readonly property var desktopItemsWorkArea: ShellLayoutController.desktopZoneWorkArea(
-            screen?.name ?? "", screen?.width ?? 0, screen?.height ?? 0)
+            screen?.name ?? "", bgRoot.width, bgRoot.height)
         function _widgetConfigValue(widgetKey: string, key: string, fallback: var): var {
             return DesktopWidgetLayout.value(bgRoot.screenName, widgetKey, key, fallback);
         }
@@ -594,8 +594,8 @@ Scope {
             const work = bgRoot.desktopFreeWorkArea
             const size = Math.max(80, Number(Config.getNestedValue(
                 "background.widgets.customImage.size", 220)))
-            const maxX = Math.max(Number(work.left ?? 0), Number(work.right ?? bgRoot.screen.width) - size)
-            const maxY = Math.max(Number(work.top ?? 0), Number(work.bottom ?? bgRoot.screen.height) - size)
+            const maxX = Math.max(Number(work.left ?? 0), Number(work.right ?? bgRoot.width) - size)
+            const maxY = Math.max(Number(work.top ?? 0), Number(work.bottom ?? bgRoot.height) - size)
             Config.setNestedValues({
                 "background.widgets.customImage.sourceMode": "file",
                 "background.widgets.customImage.path": path
@@ -1162,9 +1162,32 @@ Scope {
         // Host for LiveLayer (continuous motion in a widget moves to a small surface of its own instead of
         // repainting this whole output every frame): nothing here covers or moves a still widget outside edit.
         readonly property bool liveCalm: !GlobalStates.widgetEditMode && !GlobalStates.shellLayoutEditMode
-            && !GlobalStates.screenLocked
+            && !GlobalStates.screenLocked && !bgRoot._menuOpen // patched: a menu must stay above a detached surface
         readonly property int liveLayer: WlrLayer.Bottom
         readonly property int liveEpoch: 0
+        // patched: this window starts inside the bar and border, so wallpaper coordinates need its offset.
+        readonly property point outputOrigin: {
+            const host = ShellLayoutController.desktopHostRect(bgRoot.screen?.name ?? "",
+                bgRoot.screen?.width ?? 0, bgRoot.screen?.height ?? 0)
+            return Qt.point(host.x, host.y)
+        }
+        // patched: a detached surface draws above this whole window, so a widget stacked above must keep it home.
+        function liveCovered(item, rect): bool {
+            let widget = item
+            while (widget && widget.editInstanceKey === undefined)
+                widget = widget.parent
+            const canvas = backgroundScope.widgetCanvases[bgRoot.screenName]
+            if (!widget || !canvas)
+                return false
+            const order = other => Number(other.desktopPersistentZ ?? other.widgetIndex ?? 0)
+            return canvas._loadedDesktopWidgets().some(other => {
+                if (other === widget || !other.visible || other.opacity <= 0 || order(other) < order(widget))
+                    return false
+                const p = other.mapToItem(null, 0, 0)
+                return p.x < rect.x + rect.width && p.x + other.width > rect.x
+                    && p.y < rect.y + rect.height && p.y + other.height > rect.y
+            })
+        }
         // Map the desktop keyboard-inert during startup, then arm OnDemand after
         // the first-frame/deferred lifecycle has settled. Niri can temporarily
         // focus a newly mapped OnDemand layer surface during shell restart, which
@@ -1960,20 +1983,13 @@ Scope {
                                 sizes[(index + 1) % sizes.length])
                         } },
                     { type: "separator" },
-                    { text: Translation.tr("Widget settings"), iconName: "settings", monochromeIcon: true,
-                        action: () => GlobalStates.openSettingsPage(14) },
                     { text: Translation.tr("Done editing"), iconName: "check", monochromeIcon: true,
                         action: () => { widgetManagerPanel.shown = false; GlobalStates.setWidgetEditMode(false) } }
                 ] : [
-                    { text: Translation.tr("Settings"), iconName: "settings", monochromeIcon: true,
-                        action: () => { Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "settings"]) } },
-                    { type: "separator" },
-                    { text: Translation.tr("Change wallpaper"), iconName: "image", monochromeIcon: true,
-                        action: () => { GlobalActions.runLauncher(["wallpaperSelector", "toggle"]) } },
+                    // patched: only what this shell provides. There is no settings window or wallpaper selector here,
+                    // and shell layout editing has no panels to edit: it hid every widget with no way back.
                     { text: Translation.tr("Edit widgets"), iconName: "edit", monochromeIcon: true,
                         action: () => { GlobalStates.setWidgetEditMode(true) } },
-                    { text: Translation.tr("Edit shell layout"), iconName: "dashboard_customize", monochromeIcon: true,
-                        action: () => { ShellEditSession.toggle() } },
                     { type: "separator" },
                     { text: Translation.tr("Reload shell"), iconName: "refresh", monochromeIcon: true,
                         action: () => { Quickshell.execDetached(["/usr/bin/bash", Quickshell.shellPath("scripts/restart-shell.sh")]) } }
@@ -2792,7 +2808,7 @@ Scope {
                             && editGridOverlay.workArea?.insets?.barEdge === "bottom"
                         attachedTopEdge: irisTopEdge
                         y: editControlsBar.iris ? (irisTopEdge ? IrisFrame.band : parent.height - height - IrisFrame.band)
-                            : Math.max(editGridOverlay.safeTop, editGridOverlay.safeBottom - height - 110) // patched: caelestia's bottom hot zone swallows pointer input
+                            : Math.max(editGridOverlay.safeTop, editGridOverlay.safeBottom - height - 12)
                         onLibraryRequested: widgetManagerPanel.shown = !widgetManagerPanel.shown
                         onEdgeSettingsRequested: GlobalStates.openSettingsPage(14, "Organic edge")
                         onSettingsRequested: GlobalStates.openSettingsPage(14)
@@ -2873,8 +2889,8 @@ Scope {
                             outputName: bgRoot.screen?.name ?? ""
                             canvasWidth: widgetManagerPanel.parent?.width ?? 800
                             canvasHeight: widgetManagerPanel.parent?.height ?? 600
-                            screenWidth: bgRoot.screen.width
-                            screenHeight: bgRoot.screen.height
+                            screenWidth: bgRoot.width
+                            screenHeight: bgRoot.height
                             // Closed after its own click returns: unloading the panel inside the
                             // click that asked for it lost the next click.
                             onCloseRequested: managerCloseLater.restart()
@@ -2895,10 +2911,10 @@ Scope {
                     sourceComponent: WeatherWidget {
                         widgetIndex: 0
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -2911,10 +2927,10 @@ Scope {
                     sourceComponent: CustomImageWidget {
                         widgetIndex: 16
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -2927,10 +2943,10 @@ Scope {
                     sourceComponent: ImageConverterWidget {
                         widgetIndex: 17
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -2943,10 +2959,10 @@ Scope {
                     sourceComponent: ClockWidget {
                         widgetIndex: 1
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                         wallpaperSafetyTriggered: bgRoot.wallpaperSafetyTriggered
                         debugRegionActive: backgroundScope.clockDebugRegionActive
@@ -2970,10 +2986,10 @@ Scope {
                     sourceComponent: MediaControlsWidget {
                         widgetIndex: 2
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -2986,10 +3002,10 @@ Scope {
                     sourceComponent: VisualizerWidget {
                         widgetIndex: 3
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3002,10 +3018,10 @@ Scope {
                     sourceComponent: SystemMonitorWidget {
                         widgetIndex: 4
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3018,10 +3034,10 @@ Scope {
                     sourceComponent: BatteryWidget {
                         widgetIndex: 5
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3034,10 +3050,10 @@ Scope {
                     sourceComponent: NotesWidget {
                         widgetIndex: 6
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3050,10 +3066,10 @@ Scope {
                     sourceComponent: CalendarUpcomingWidget {
                         widgetIndex: 7
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3066,10 +3082,10 @@ Scope {
                     sourceComponent: MonthCalendarWidget {
                         widgetIndex: 8
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3082,10 +3098,10 @@ Scope {
                     sourceComponent: TodoWidget {
                         widgetIndex: 10
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3098,10 +3114,10 @@ Scope {
                     sourceComponent: TimerWidget {
                         widgetIndex: 18
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3114,10 +3130,10 @@ Scope {
                     sourceComponent: DayProgressWidget {
                         widgetIndex: 8
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3130,10 +3146,10 @@ Scope {
                     sourceComponent: UptimeWidget {
                         widgetIndex: 9
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3146,10 +3162,10 @@ Scope {
                     sourceComponent: ControlsWidget {
                         widgetIndex: 19
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3162,10 +3178,10 @@ Scope {
                     sourceComponent: ScreenTimeWidget {
                         widgetIndex: 39
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3178,10 +3194,10 @@ Scope {
                     sourceComponent: EditorialWidget {
                         widgetIndex: 22
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3194,10 +3210,10 @@ Scope {
                     sourceComponent: ShapeWidget {
                         widgetIndex: 20
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3210,10 +3226,10 @@ Scope {
                     sourceComponent: DateBadgeWidget {
                         widgetIndex: 21
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3227,10 +3243,10 @@ Scope {
                     sourceComponent: WorldClockWidget {
                         widgetIndex: 14
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3243,10 +3259,10 @@ Scope {
                     sourceComponent: UserCardWidget {
                         widgetIndex: 15
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3259,10 +3275,10 @@ Scope {
                     sourceComponent: NewsTickerWidget {
                         widgetIndex: 11
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3275,10 +3291,10 @@ Scope {
                     sourceComponent: MascotWidget {
                         widgetIndex: 12
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3291,10 +3307,10 @@ Scope {
                     sourceComponent: JapaneseTypographyWidget {
                         widgetIndex: 13
                         outputName: bgRoot.screen?.name ?? ""
-                        screenWidth: bgRoot.screen.width
-                        screenHeight: bgRoot.screen.height
-                        scaledScreenWidth: bgRoot.screen.width
-                        scaledScreenHeight: bgRoot.screen.height
+                        screenWidth: bgRoot.width
+                        screenHeight: bgRoot.height
+                        scaledScreenWidth: bgRoot.width
+                        scaledScreenHeight: bgRoot.height
                         wallpaperScale: 1
                     }
                 }
@@ -3331,10 +3347,10 @@ Scope {
                                 configEntryName: "mascotInstances." + modelData,
                                 widgetIndex: 23 + index,
                                 outputName: bgRoot.screen?.name ?? "",
-                                screenWidth: bgRoot.screen.width,
-                                screenHeight: bgRoot.screen.height,
-                                scaledScreenWidth: bgRoot.screen.width,
-                                scaledScreenHeight: bgRoot.screen.height,
+                                screenWidth: bgRoot.width,
+                                screenHeight: bgRoot.height,
+                                scaledScreenWidth: bgRoot.width,
+                                scaledScreenHeight: bgRoot.height,
                                 wallpaperScale: 1
                             });
                         }
@@ -3357,22 +3373,22 @@ Scope {
                             function onConfigChanged() { Qt.callLater(mascotInstanceLoader._syncLoaded) }
                         }
                         Connections {
-                            target: bgRoot.screen
+                            target: bgRoot // patched: the window, not the screen, is what these sizes follow
                             function onWidthChanged() {
                                 if (!mascotInstanceLoader.item) return;
-                                mascotInstanceLoader.item.screenWidth = bgRoot.screen.width;
-                                mascotInstanceLoader.item.scaledScreenWidth = bgRoot.screen.width;
+                                mascotInstanceLoader.item.screenWidth = bgRoot.width;
+                                mascotInstanceLoader.item.scaledScreenWidth = bgRoot.width;
                             }
                             function onHeightChanged() {
                                 if (!mascotInstanceLoader.item) return;
-                                mascotInstanceLoader.item.screenHeight = bgRoot.screen.height;
-                                mascotInstanceLoader.item.scaledScreenHeight = bgRoot.screen.height;
+                                mascotInstanceLoader.item.screenHeight = bgRoot.height;
+                                mascotInstanceLoader.item.scaledScreenHeight = bgRoot.height;
                             }
                         }
                     }
                 }
 
-                // Custom user widgets from ~/.config/inir/widgets/
+                // Custom user widgets from ~/.config/caelestia-widgets/widgets/
                 Repeater {
                     model: CustomWidgets.ready ? CustomWidgets.widgets : []
 
@@ -3397,10 +3413,10 @@ Scope {
                             const props = {
                                 widgetIndex: 40 + index,
                                 outputName: bgRoot.screen?.name ?? "",
-                                screenWidth: bgRoot.screen.width,
-                                screenHeight: bgRoot.screen.height,
-                                scaledScreenWidth: bgRoot.screen.width,
-                                scaledScreenHeight: bgRoot.screen.height,
+                                screenWidth: bgRoot.width,
+                                screenHeight: bgRoot.height,
+                                scaledScreenWidth: bgRoot.width,
+                                scaledScreenHeight: bgRoot.height,
                                 wallpaperScale: 1,
                             };
                             // Pass manifest data for auto-popover and resize
@@ -3438,16 +3454,16 @@ Scope {
                         }
 
                         Connections {
-                            target: bgRoot.screen
+                            target: bgRoot // patched: the window, not the screen, is what these sizes follow
                             function onWidthChanged() {
                                 if (!customWidgetLoader.item) return;
-                                customWidgetLoader.item.screenWidth = bgRoot.screen.width;
-                                customWidgetLoader.item.scaledScreenWidth = bgRoot.screen.width;
+                                customWidgetLoader.item.screenWidth = bgRoot.width;
+                                customWidgetLoader.item.scaledScreenWidth = bgRoot.width;
                             }
                             function onHeightChanged() {
                                 if (!customWidgetLoader.item) return;
-                                customWidgetLoader.item.screenHeight = bgRoot.screen.height;
-                                customWidgetLoader.item.scaledScreenHeight = bgRoot.screen.height;
+                                customWidgetLoader.item.screenHeight = bgRoot.height;
+                                customWidgetLoader.item.scaledScreenHeight = bgRoot.height;
                             }
                         }
                     }
