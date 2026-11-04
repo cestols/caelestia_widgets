@@ -576,7 +576,8 @@ AbstractWidget {
 
     // In edit mode, allow dragging regardless of strategy (user can reposition freely)
     readonly property bool _isZonePlacement: root._snapZones.indexOf(root.placementStrategy) >= 0
-    draggable: (placementStrategy === "free" || GlobalStates.widgetEditMode) && !GlobalStates.screenLocked && !root.locked
+    // patched: widgets only move in edit mode
+    draggable: GlobalStates.widgetEditMode && !GlobalStates.screenLocked && !root.locked
     grabCursor: GlobalStates.widgetEditMode
     function syncFreePositionFromConfig(): void {
         if (!Config.ready || root.containsPress || root._isResizing) return;

@@ -1155,7 +1155,7 @@ Scope {
 
         // Layer props
         screen: modelData
-        exclusionMode: ExclusionMode.Ignore
+        exclusionMode: ExclusionMode.Normal // patched: stay inside caelestia's bar and border
         // Keep background behind the lock surface. Moving this to Overlay can capture input.
         WlrLayershell.layer: WlrLayer.Bottom
         WlrLayershell.namespace: "quickshell:background"
@@ -2792,7 +2792,7 @@ Scope {
                             && editGridOverlay.workArea?.insets?.barEdge === "bottom"
                         attachedTopEdge: irisTopEdge
                         y: editControlsBar.iris ? (irisTopEdge ? IrisFrame.band : parent.height - height - IrisFrame.band)
-                            : Math.max(editGridOverlay.safeTop, editGridOverlay.safeBottom - height - 12)
+                            : Math.max(editGridOverlay.safeTop, editGridOverlay.safeBottom - height - 110) // patched: caelestia's bottom hot zone swallows pointer input
                         onLibraryRequested: widgetManagerPanel.shown = !widgetManagerPanel.shown
                         onEdgeSettingsRequested: GlobalStates.openSettingsPage(14, "Organic edge")
                         onSettingsRequested: GlobalStates.openSettingsPage(14)

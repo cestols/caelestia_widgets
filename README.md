@@ -25,6 +25,7 @@ Autostart and keybind live in `~/.config/hypr/hyprland/execs.lua` and `keybinds.
 - `scripts/colors/*` that rewrite GTK/Qt/terminal/Spotify/Vesktop/browser themes are replaced by no-ops,
   and `IconThemeService._apply` returns early: this project must not touch system theming.
 - `services/Notifications.qml`: the `NotificationServer` is a stub, so we never claim `org.freedesktop.Notifications`.
+- `AbstractBackgroundWidget.qml`, `Background.qml`: drag only in edit mode, `ExclusionMode.Normal`, toolbar offset.
 - `Background.qml`: guard on `HyprlandData.windowList` being undefined at startup.
 
 ## Enabling widgets
@@ -37,6 +38,10 @@ Edit `background.widgets.<name>.enable` and `x`/`y` in `~/.config/caelestia-widg
 `SUPER + SHIFT + E` (or `qs -p shell.qml ipc call background toggleEditMode`) toggles inir's edit mode:
 snap grid, resize handles, and the bottom toolbar (Add widgets, Grid size, Done). Click a widget to get its
 options menu (Widget / Look / Arrange tabs).
+
+Widgets are not draggable outside edit mode (`AbstractBackgroundWidget.draggable`). The window uses
+`ExclusionMode.Normal`, so it sits inside caelestia's bar and border, and the toolbar is raised above the
+bottom edge because the pointer input did not reach it there.
 
 ## Known gaps
 
